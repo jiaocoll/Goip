@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/panjf2000/ants/v2"
 	"net"
 	"os"
 	"sync"
@@ -17,12 +18,14 @@ var (
 	outputfile string
 	names []string
 	ips []string
+	rate int
 )
 
 func init(){
 	flag.BoolVar(&help,"h, --help",false,"help, 帮助命令")
 	flag.StringVar(&inputfile,"i","","要读取的文件")
 	flag.StringVar(&outputfile,"o","","要输出的文件")
+	flag.IntVar(&rate,"rate",50000,"速率")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -44,22 +47,25 @@ func Getip(inputfile string, outputfile string)(count1 int, count2 int){
 		fmt.Fprintln(color.Output,time.Now().Format("2006/01/02 12:22:48"),color.RedString("[ERROR]")+":",err)
 	}
 	hostnames := bufio.NewScanner(infile)
-	var wg sync.WaitGroup
 	for hostnames.Scan() {
 		count1++
 		hostname := hostnames.Text()
 		names = append(names, hostname)
-		go func() {
-			wg.Add(1)
-			defer wg.Done()
-			ip, err := net.ResolveIPAddr("ip",hostname)
-			if err != nil {
-				fmt.Fprintln(color.Output,time.Now().Format("2006/01/02 12:22:48"),color.YellowString("[WARNING]")+":",err)
-			}
-			if ip != nil {
-				ips = append(ips, ip.String())
-			}
-		}()
+	}
+	var wg sync.WaitGroup
+	p, _ := ants.NewPoolWithFunc(rate, func(i interface{}) {
+		ip, err := net.ResolveIPAddr("ip",i.(string))
+		if err != nil {
+			fmt.Fprintln(color.Output,time.Now().Format("2006-01-02 15:04:05"),color.YellowString("[WARNING]")+":",err)
+		}
+		if ip != nil {
+			ips = append(ips, ip.String())
+		}
+		wg.Done()
+	})
+	for _,target := range names{
+		wg.Add(1)
+		_ = p.Invoke(target)
 	}
 	wg.Wait()
 
